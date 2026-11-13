@@ -1,0 +1,47 @@
+using foll_notifications.NotificationCommunication.Domain.Model.Entities;
+using foll_notifications.NotificationCommunication.Domain.Repositories;
+using foll_notifications.Shared.Infrastructure.Persistence.EFC.Configuration;
+using foll_notifications.Shared.Infrastructure.Persistence.EFC.Repositories;
+using Microsoft.EntityFrameworkCore;
+
+namespace foll_notifications.NotificationCommunication.Infrastructure.Persistence.EFC.Repositories;
+
+public class NotificationLogRepository : BaseRepository<NotificationLog>, INotificationLogRepository
+{
+    public NotificationLogRepository(AppDbContext context) : base(context)
+    {
+    }
+
+    public async Task<IReadOnlyCollection<NotificationLog>> ListByUserIdAsync(long userId)
+    {
+        if (userId <= 0) return Array.Empty<NotificationLog>();
+
+        return await Context.Set<NotificationLog>()
+            .Where(n => n.UserId == userId)
+            .OrderByDescending(n => n.CreatedAt)
+            .ThenByDescending(n => n.NotificationLogId)
+            .ToListAsync();
+    }
+
+    public async Task<NotificationLog?> FindByIdAndUserIdAsync(long notificationLogId, long userId)
+    {
+        if (notificationLogId <= 0 || userId <= 0) return null;
+
+        return await Context.Set<NotificationLog>()
+            .FirstOrDefaultAsync(n => n.NotificationLogId == notificationLogId && n.UserId == userId);
+    }
+
+    public async Task DeleteByUserIdAsync(long userId)
+    {
+        if (userId <= 0) return;
+
+        var logs = await Context.Set<NotificationLog>()
+            .Where(n => n.UserId == userId)
+            .ToListAsync();
+
+        if (logs.Any())
+        {
+            Context.Set<NotificationLog>().RemoveRange(logs);
+        }
+    }
+}

@@ -1,0 +1,8 @@
+\set ON_ERROR_STOP on
+BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY;
+\copy notification.notification_logs (notification_log_id, user_id, notification_type, notification_channel, notification_status, title, body, data_json, provider_message_id, error_message, device_event_id, patient_id, device_id, sent_at, read_at, acknowledged_at, created_at, updated_at) TO 'notification_logs.csv' WITH (FORMAT csv, HEADER true, ENCODING 'UTF8')
+\copy notification.sms_notification_logs (sms_notification_log_id, incident_key, user_id, emergency_contact_id, patient_id, device_id, recipient_name, phone_number, notification_type, notification_status, message, location_access_url, provider_message_id, error_message, sent_at, created_at, updated_at) TO 'sms_notification_logs.csv' WITH (FORMAT csv, HEADER true, ENCODING 'UTF8')
+\copy notification.user_push_tokens (user_push_token_id, user_id, token, platform, device_name, is_active, last_used_at, created_at, updated_at) TO 'user_push_tokens.csv' WITH (FORMAT csv, HEADER true, ENCODING 'UTF8')
+\copy notification.emergency_location_access_links (emergency_location_access_link_id, incident_key, patient_id, device_id, token_hash, expires_at, created_at, last_accessed_at, revoked_at) TO 'emergency_location_access_links.csv' WITH (FORMAT csv, HEADER true, ENCODING 'UTF8')
+\copy (SELECT event_id, received_at FROM shared.integration_receipts WHERE event_id LIKE 'emergency-analytics.%' OR event_id LIKE 'device-managment:%' OR event_id LIKE 'care.invitation:%') TO 'integration_receipts.csv' WITH (FORMAT csv, HEADER true, ENCODING 'UTF8')
+COMMIT;

@@ -1,0 +1,28 @@
+@baseUrl = http://localhost:5257
+@jwt = REEMPLAZAR_JWT
+@serviceKey = REEMPLAZAR_CLAVE_INTERNA
+
+GET {{baseUrl}}/api/notifications
+Authorization: Bearer {{jwt}}
+
+###
+POST {{baseUrl}}/api/notifications/push-tokens
+Authorization: Bearer {{jwt}}
+Content-Type: application/json
+
+{ "token": "TOKEN_REAL_DEL_CLIENTE", "platform": "Web", "deviceName": "Browser" }
+
+###
+POST {{baseUrl}}/api/notifications/1/read
+Authorization: Bearer {{jwt}}
+
+###
+POST {{baseUrl}}/api/notifications/1/acknowledge
+Authorization: Bearer {{jwt}}
+
+### Recepción durable desde Devices
+POST {{baseUrl}}/internal/notifications/device-events
+X-Foll-Service-Key: {{serviceKey}}
+Content-Type: application/json
+
+{ "eventId": "device-managment:41", "outboxMessageId": 41, "type": "device-managment.low-battery-detected.v1", "payload": { "DeviceId": 1001, "PatientId": 25, "BatteryLevel": 10, "ReportedAtUtc": "2026-11-13T15:00:00Z" } }
