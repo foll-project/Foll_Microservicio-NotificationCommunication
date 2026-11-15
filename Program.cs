@@ -18,15 +18,14 @@ using foll_notifications.Shared.Domain.Repositories;
 using foll_notifications.Shared.Infrastructure.Persistence.EFC.Configuration;
 using foll_notifications.Shared.Infrastructure.Persistence.EFC.Repositories;
 using foll_notifications.Shared.Infrastructure.Swagger;
+using foll_notifications.Shared.Infrastructure.Messaging;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 var builder = WebApplication.CreateBuilder(args);
 var secret = builder.Configuration["JwtSettings:Secret"];
-var serviceKey = builder.Configuration["InternalApi:ApiKey"];
 if (string.IsNullOrWhiteSpace(secret) || Encoding.ASCII.GetByteCount(secret) < 32) throw new InvalidOperationException("Configure JwtSettings:Secret de IAM (32 bytes mínimo).");
-if (string.IsNullOrWhiteSpace(serviceKey) || serviceKey.Length < 32) throw new InvalidOperationException("Configure InternalApi:ApiKey (32 caracteres mínimo).");
 if (builder.Configuration.GetValue("Inbox:PollIntervalMilliseconds", 500) <= 0 || builder.Configuration.GetValue("Telemetry:Capacity", 1000) <= 0) throw new InvalidOperationException("Opciones de workers inválidas.");
 builder.Services.AddDbContext<AppDbContext>(o => o.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection"), pg => pg.MigrationsHistoryTable("__EFMigrationsHistory", "notification")).UseSnakeCaseNamingConvention());
 builder.Services.AddControllers(); builder.Services.AddSignalR(); builder.Services.AddEndpointsApiExplorer();
@@ -74,9 +73,18 @@ builder.Services.AddScoped<IInvitationRealtimePublisher, SignalRInvitationRealti
 builder.Services.AddScoped<SignalRDeviceTelemetryRealtimePublisher>();
 builder.Services.AddScoped<INotificationInbox, NotificationInbox>();
 builder.Services.AddSingleton<TelemetryBuffer>();
-builder.Services.AddHttpClient<IPatientNotificationAccessService, PatientRecipientsGateway>(c => Configure(c, "Care"));
-builder.Services.AddHttpClient<IUserInfoGateway, UserInfoGateway>(c => Configure(c, "Iam"));
-builder.Services.AddHttpClient<IEmergencyLocationGateway, EmergencyLocationGateway>(c => Configure(c, "EmergencyAnalytics"));
+builder.Services.AddHttpClient<IPatientNotificationAccessService, PatientRecipientsGateway>(c => Configure(c, "Care"))
+    .RedactLoggedHeaders(["X-Foll-Service-Key"])
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+builder.Services.AddHttpClient<IEmergencyLocationGateway, EmergencyLocationGateway>(c => Configure(c, "EmergencyAnalytics"))
+    .RedactLoggedHeaders(["X-Foll-Service-Key"])
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+builder.Services.AddIntegrationConsumer<NotificationEventHandler>(builder.Configuration,
+    "notificationcommunication.invitation-events.v1", NotificationEventHandler.InvitationTypes);
+builder.Services.AddIntegrationConsumer<NotificationEventHandler>(builder.Configuration,
+    "notificationcommunication.emergency-events.v1", NotificationEventHandler.EmergencyTypes);
+builder.Services.AddIntegrationConsumer<NotificationEventHandler>(builder.Configuration,
+    "notificationcommunication.device-events.v1", NotificationEventHandler.DeviceTypes);
 var pushProvider = builder.Configuration["Notifications:PushProvider"] ?? "Fake";
 var smsProvider = builder.Configuration["Sms:Provider"] ?? "Fake";
 if (pushProvider.Equals("Firebase", StringComparison.OrdinalIgnoreCase)) builder.Services.AddScoped<IPushNotificationSender, FirebasePushNotificationSender>();
@@ -110,6 +118,9 @@ void Configure(HttpClient client, string name)
 {
     client.BaseAddress = new Uri((builder.Configuration[$"Services:{name}:BaseUrl"] ?? throw new InvalidOperationException($"Falta URL {name}")).TrimEnd('/') + "/");
     client.Timeout = TimeSpan.FromSeconds(builder.Configuration.GetValue($"Services:{name}:TimeoutSeconds", 10));
-    client.DefaultRequestHeaders.Add("X-Foll-Service-Key", serviceKey);
+    var key = builder.Configuration["InternalApi:BackgroundQueryKey"];
+    if (string.IsNullOrWhiteSpace(key) || key.Length < 32)
+        throw new InvalidOperationException("Configure InternalApi:BackgroundQueryKey para consultas sin sesion de usuario.");
+    client.DefaultRequestHeaders.Add("X-Foll-Service-Key", key);
 }
 public partial class Program;

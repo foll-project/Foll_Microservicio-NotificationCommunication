@@ -1,27 +1,33 @@
-param([int]$Port = 15257)
+param([int]$Port = 15257, [switch]$CheckDatabase)
 $ErrorActionPreference = 'Stop'
 $taskRoot = Split-Path -Parent $PSScriptRoot
 $taskDll = Join-Path $taskRoot 'bin/Debug/net10.0/Foll-NotificationCommunication.dll'
 if (-not (Test-Path -LiteralPath $taskDll)) { throw 'Ejecute dotnet build primero.' }
 $taskKey = 'smoke-test-only-key-with-at-least-32-bytes'
-$taskArgs = @('"' + $taskDll + '"', '--urls', "http://127.0.0.1:$Port", "--JwtSettings:Secret=$taskKey", '--InternalApi:ApiKey=smoke-test-only-service-key-32-characters', '--Inbox:Enabled=false', '--Telemetry:Enabled=false', '--ApplyMigrationsOnStartup=false', '--Swagger:Enabled=true')
+$taskArgs = @('"' + $taskDll + '"', '--urls', "http://127.0.0.1:$Port", "--JwtSettings:Secret=$taskKey", '--Inbox:Enabled=false', '--Telemetry:Enabled=false', '--IntegrationConsumers:Enabled=false', '--ApplyMigrationsOnStartup=false', '--Swagger:Enabled=true')
 $taskProcess = Start-Process -FilePath 'dotnet' -ArgumentList $taskArgs -WorkingDirectory $taskRoot -WindowStyle Hidden -PassThru
 try {
     $taskBase = "http://127.0.0.1:$Port"
     $taskReady = $false
     for ($taskAttempt = 0; $taskAttempt -lt 40; $taskAttempt++) {
         if ($taskProcess.HasExited) { throw 'El servicio terminó antes de iniciar.' }
-        try { Invoke-WebRequest "$taskBase/health/live" -TimeoutSec 1 | Out-Null; $taskReady = $true; break } catch { Start-Sleep -Milliseconds 250 }
+        try { Invoke-WebRequest -UseBasicParsing "$taskBase/health/live" -TimeoutSec 1 | Out-Null; $taskReady = $true; break } catch { Start-Sleep -Milliseconds 250 }
     }
     if (-not $taskReady) { throw 'No respondió health/live.' }
+    if ($CheckDatabase) {
+        $taskDatabaseHealth = Invoke-RestMethod "$taskBase/health/ready" -TimeoutSec 30
+        if ($taskDatabaseHealth.status -ne 'ready') { throw 'La base de Notifications no está preparada.' }
+        Write-Output 'PASS: health/ready consulta las cinco tablas de Notifications.'
+    }
     foreach ($taskPath in @('/api/notifications', '/hubs/notifications/negotiate?negotiateVersion=1')) {
         $taskCode = 0
-        try { $taskMethod = if ($taskPath.StartsWith('/hubs')) { 'Post' } else { 'Get' }; $taskResult = Invoke-WebRequest "$taskBase$taskPath" -Method $taskMethod -TimeoutSec 3; $taskCode = [int]$taskResult.StatusCode }
+        try { $taskMethod = if ($taskPath.StartsWith('/hubs')) { 'Post' } else { 'Get' }; $taskResult = Invoke-WebRequest -UseBasicParsing "$taskBase$taskPath" -Method $taskMethod -TimeoutSec 3; $taskCode = [int]$taskResult.StatusCode }
         catch { if ($_.Exception.Response) { $taskCode = [int]$_.Exception.Response.StatusCode } else { throw } }
         if ($taskCode -ne 401) { throw "Se esperaba 401 en $taskPath; recibido $taskCode" }
     }
     $taskSwagger = Invoke-RestMethod "$taskBase/swagger/v1/swagger.json" -TimeoutSec 5
-    if (-not $taskSwagger.paths.'/internal/notifications/emergency-events' -or -not $taskSwagger.paths.'/api/notifications') { throw 'Faltan contratos en Swagger.' }
+    if (-not $taskSwagger.paths.'/api/notifications') { throw 'Faltan contratos en Swagger.' }
+    if ($taskSwagger.paths.'/internal/notifications/emergency-events') { throw 'La recepción de eventos debe realizarse por RabbitMQ.' }
     if ($taskSwagger.paths.PSObject.Properties.Name -match 'account-deleted|patients-deleted') { throw 'Hay una ruta excluida.' }
     # Synthetic local JWT; no real user credentials or providers are used.
     function ConvertTo-TaskBase64Url([byte[]]$Value) { [Convert]::ToBase64String($Value).TrimEnd('=').Replace('+','-').Replace('/','_') }
