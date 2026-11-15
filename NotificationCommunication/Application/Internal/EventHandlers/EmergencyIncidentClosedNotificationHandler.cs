@@ -16,18 +16,15 @@ public class EmergencyIncidentClosedNotificationHandler : INotificationHandler<E
 {
     private readonly IHubContext<NotificationsHub> _hubContext;
     private readonly IPatientNotificationAccessService _patientNotificationAccessService;
-    private readonly IUserInfoGateway _userInfoAcl;
     private readonly ILogger<EmergencyIncidentClosedNotificationHandler> _logger;
 
     public EmergencyIncidentClosedNotificationHandler(
         IHubContext<NotificationsHub> hubContext,
         IPatientNotificationAccessService patientNotificationAccessService,
-        IUserInfoGateway userInfoAcl,
         ILogger<EmergencyIncidentClosedNotificationHandler> logger)
     {
         _hubContext = hubContext;
         _patientNotificationAccessService = patientNotificationAccessService;
-        _userInfoAcl = userInfoAcl;
         _logger = logger;
     }
 
@@ -38,14 +35,6 @@ public class EmergencyIncidentClosedNotificationHandler : INotificationHandler<E
             var recipients = await _patientNotificationAccessService.GetRecipientsForPatientAsync(notification.PatientId);
             if (recipients is null || recipients.PushRecipients.Count == 0) return;
 
-            string? closedByName = null;
-            if (notification.ClosedByUserId is > 0)
-            {
-                var userInfo = await _userInfoAcl.GetUserInfoByIdAsync(notification.ClosedByUserId.Value);
-                if (userInfo is not null)
-                    closedByName = $"{userInfo.FirstName} {userInfo.LastName}".Trim();
-            }
-
             var payload = new IncidentResolvedRealtimeMessage(
                 notification.IncidentKey,
                 notification.DeviceId,
@@ -53,7 +42,7 @@ public class EmergencyIncidentClosedNotificationHandler : INotificationHandler<E
                 notification.Status.ToString(),
                 notification.CancellationReason?.ToString(),
                 notification.ClosedByUserId,
-                closedByName,
+                notification.ClosedByName,
                 notification.ClosedAtUtc,
                 notification.Observation,
                 notification.FallTypeName);
@@ -74,7 +63,6 @@ public class EmergencyIncidentClosedNotificationHandler : INotificationHandler<E
                 "Error publicando incident.resolved en tiempo real para IncidentKey={IncidentKey} PatientId={PatientId}.",
                 notification.IncidentKey,
                 notification.PatientId);
-            throw; // Let durable delivery retry rather than acknowledging an unsuccessful realtime publication.
         }
     }
 }

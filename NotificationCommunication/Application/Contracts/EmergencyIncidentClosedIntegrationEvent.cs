@@ -15,4 +15,5 @@ public record EmergencyIncidentClosedIntegrationEvent(
     DateTime ClosedAtUtc,
     EmergencyCancellationReason? CancellationReason,
     long? ClosedByUserId,
-    string? Observation) : INotification;
+    string? Observation,
+    string? ClosedByName = null) : INotification;

@@ -9,6 +9,7 @@
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" PrivateAssets="all" />
     <PackageReference Include="Microsoft.AspNetCore.TestHost" Version="10.0.7" />
     <ProjectReference Include="../Foll-NotificationCommunication.csproj" />
-    <ProjectReference Include="../../foll-backend/foll-backend.csproj" />
+    <ProjectReference Include="../../Foll_Microservicio-EmergencyAnalytics/Foll-EmergencyAnalytics.csproj" Aliases="Emergency" />
+    <ProjectReference Include="../../Foll_Microservicio-DeviceManagment/Foll-DeviceManagment.csproj" Aliases="Devices" />
   </ItemGroup>
 </Project>
